@@ -7,8 +7,10 @@ Phases (run in order by the qa-daily cron worker):
     regen    re-run ceg.py --all; fail if any requirement is uncovered
     test     run automated checks against the current release;
              writes logs/qa-results-<date>.json
-    issues   file GitHub issues for failures (deduped) + ledger entries
-    sync     reconcile GitHub qa issues with PRIVATE_LEDGER.md
+    issues   file failures into the bug database (bugs.db); GitHub issues
+             are created deduplicated for products with a repo
+    sync     two-way sync between bugs.db and GitHub qa issues, then
+             re-export PRIVATE_LEDGER.md
 
 The QA manager finds and flags with reproduction steps. It never
 debugs and never fixes - the programmers do their own debugging.
@@ -334,39 +336,8 @@ def cmd_test():
 
 # ---------------- issues ----------------
 
-def open_qa_issues(slug):
-    return [i for i in gh_api("GET", "/repos/%s/issues?state=open&per_page=100" % slug)
-            if any(l["name"] == "qa" for l in i.get("labels", []))]
-
-
-def ledger_entries():
-    text = open(LEDGER).read()
-    entries = []
-    for m in re.finditer(
-            r"## (QA-\d+) — (\d{4}-\d{2}-\d{2}) — ([^\n]+)\n(.*?)(?=\n## QA-|\Z)",
-            text, re.S):
-        qid, day, product, body = m.group(1), m.group(2), m.group(3).strip(), m.group(4)
-        gm = re.search(r"https://github\.com/([^/\s]+/[^/\s]+)/issues/(\d+)", body)
-        sm = re.search(r"^- Status: (.+)$", body, re.M)
-        entries.append({"id": qid, "day": day, "product": product,
-                        "github": gm.group(1) + "#" + gm.group(2) if gm else None,
-                        "url": gm.group(0) if gm else None,
-                        "status": sm.group(1).strip() if sm else "open"})
-    return entries
-
-
-def append_ledger(entry_text):
-    text = open(LEDGER).read()
-    marker = "(No issues logged yet. The daily run appends entries below, newest first.)"
-    if marker in text:
-        text = text.replace(marker, marker + "\n" + entry_text, 1)
-    else:
-        text = text.rstrip() + "\n" + entry_text
-    with open(LEDGER, "w") as f:
-        f.write(text)
-
-
 def cmd_issues():
+    import bugs
     paths = sorted([p for p in os.listdir(LOGS) if p.startswith("qa-results-")])
     if not paths:
         print("no test results; run test first")
@@ -376,119 +347,28 @@ def cmd_issues():
     if not fails:
         print("no failures; nothing to file")
         return 0
-    st = load_state()
-    filed = 0
     for r in fails:
-        product = r["product"]
-        slug = REPOS[product]["github"]
-        title = "[QA] %s: %s" % (product, r["name"])
-        body = ("Automated QA check failed on %s.\n\n**Observed:** %s\n\n"
-                "**Reproduction:**\n%s\n\n_Logged by the QA manager; "
-                "debugging belongs to the programmers._"
-                % (date.today().isoformat(), r["detail"] or "see check output",
-                   "\n".join("%d. %s" % (i + 1, s) for i, s in enumerate(r["repro"]))))
-        url, number = None, None
-        if slug:
-            try:
-                existing = open_qa_issues(slug)
-                dup = [i for i in existing if i["title"] == title]
-                if dup:
-                    number, url = dup[0]["number"], dup[0]["html_url"]
-                    print("already open: %s #%d" % (slug, number))
-                else:
-                    created = gh_api("POST", "/repos/%s/issues" % slug,
-                                     {"title": title, "body": body,
-                                      "labels": ["qa"]})
-                    number, url = created["number"], created["html_url"]
-                    print("filed: %s" % url)
-            except Exception as e:
-                print("GitHub filing failed for %s: %s" % (title, e),
-                      file=sys.stderr)
-        st["qa_counter"] += 1
-        qid = "QA-%04d" % st["qa_counter"]
-        entry = ("\n## %s — %s — %s\n" % (qid, date.today().isoformat(), product)
-                 + ("- GitHub: #%d %s (open)\n" % (number, url) if url
-                    else "- GitHub: n/a (no repo — ledger only)\n")
-                 + "- Check: %s\n" % r["name"]
-                 + "- Observed: %s\n" % (r["detail"] or "see check output")
-                 + "- Repro:\n"
-                 + "".join("  %d. %s\n" % (i + 1, s) for i, s in enumerate(r["repro"]))
-                 + "- Status: open\n")
-        append_ledger(entry)
-        filed += 1
-    save_state(st)
-    print("ledger entries added: %d" % filed)
+        qid, url = bugs.file_issue(r["product"], r["name"], r["detail"],
+                                   r["repro"])
+        print("%s recorded%s" % (qid, ": " + url if url else " (ledger only)"))
+    bugs.export_ledger()
+    print("ledger re-exported from the bug database")
     return 0
 
 
 # ---------------- sync ----------------
 
 def cmd_sync():
+    import bugs
     paths = sorted([p for p in os.listdir(LOGS) if p.startswith("qa-results-")])
     latest = json.load(open(os.path.join(LOGS, paths[-1]))) if paths else []
     passed = {(r["product"], r["name"]) for r in latest if r["ok"]}
-    entries = ledger_entries()
-    text = open(LEDGER).read()
-    report = []
-    for e in entries:
-        if not e["github"]:
-            continue
-        slug, num = e["github"].split("#")
-        try:
-            issue = gh_api("GET", "/repos/%s/issues/%s" % (slug, num))
-        except Exception as ex:
-            report.append("%s: could not read %s (%s)" % (e["id"], e["github"], ex))
-            continue
-        gh_state = issue["state"]
-        new_status = None
-        if gh_state == "closed" and e["status"] == "open":
-            new_status = "closed-on-github-unverified"
-        if e["status"] in ("open", "closed-on-github-unverified",
-                           "fixed-unverified"):
-            key = (e["product"], None)
-            # match by check name recorded in the entry
-            m = re.search(r"^- Check: (.+)$",
-                          text.split("## " + e["id"])[1].split("## QA-")[0], re.M)
-            if m and (e["product"], m.group(1).strip()) in passed:
-                new_status = "verified-closed"
-        if new_status and new_status != e["status"]:
-            text = text.replace(
-                "## " + e["id"] + " — " + e["day"] + " — " + e["product"],
-                "## " + e["id"] + " — " + e["day"] + " — " + e["product"], 1)
-            # update the Status line inside this entry only
-            head, rest = text.split("## " + e["id"], 1)
-            rest = re.sub(r"^- Status: .+$", "- Status: " + new_status, rest,
-                          count=1, flags=re.M)
-            text = head + "## " + e["id"] + rest
-            report.append("%s: %s -> %s (GitHub %s is %s)"
-                          % (e["id"], e["status"], new_status, e["github"], gh_state))
-    # pull: GitHub qa issues missing from the ledger
-    have = {e["github"] for e in entries if e["github"]}
-    st = load_state()
-    for name, info in REPOS.items():
-        slug = info["github"]
-        if not slug:
-            continue
-        try:
-            for i in open_qa_issues(slug):
-                key = slug + "#" + str(i["number"])
-                if key not in have:
-                    st["qa_counter"] += 1
-                    qid = "QA-%04d" % st["qa_counter"]
-                    append_ledger(
-                        "\n## %s — %s — %s\n" % (qid, date.today().isoformat(), name)
-                        + "- GitHub: #%d %s (open)\n" % (i["number"], i["html_url"])
-                        + "- Check: %s\n" % i["title"]
-                        + "- Observed: filed on GitHub, imported by sync\n"
-                        + "- Repro:\n  1. See the GitHub issue.\n"
-                        + "- Status: open\n")
-                    report.append("%s: imported %s from GitHub" % (qid, key))
-        except Exception as ex:
-            report.append("%s: pull failed (%s)" % (slug, ex))
-    with open(LEDGER, "w") as f:
-        f.write(text)
-    save_state(st)
+    report = bugs.sync(passed)
+    bugs.export_ledger()
+    print("\n".join(report) if report else "sync: no changes")
+    print("ledger re-exported from the bug database")
     # watermarks advance: what we just tested is now the baseline
+    st = load_state()
     for name, info in REPOS.items():
         d = info["dir"]
         if d and os.path.isdir(os.path.join(d, ".git")):
@@ -497,7 +377,6 @@ def cmd_sync():
                 st["watermarks"][name] = r.stdout.strip()
     st["last_run"] = date.today().isoformat()
     save_state(st)
-    print("\n".join(report) if report else "sync: no changes")
     return 0
 
 
