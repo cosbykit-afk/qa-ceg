@@ -1,0 +1,10 @@
+# private / local-only: never published
+PRIVATE_LEDGER.md
+bugs.db
+state.json
+logs/
+__pycache__/
+*.pyc
+
+# regenerable artifacts (rebuild with: python3 ceg.py --all)
+suites/*.tests.json

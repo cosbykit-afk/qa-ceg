@@ -1,0 +1,94 @@
+# CEG: forum — Lampy forum stack (/app)
+# Codebase: ~/workspace/forum (live), repo mirror: forum-stack
+# Live: Toetop lampy distro, /opt/forum, served under /app
+
+[PAGE]
+Forum pages: /register, /login, /new_thread, /thread/<id>, /search,
+/api/comments, and the base header. Grounded in app.py routes and the
+verified 12-check return-flow test (2026-09-28).
+
+[INPUTS]
+c0 = page : register | login | new_thread | thread | search | api_comments
+c1 = username : blank | new | existing | invalid_chars
+c2 = email : blank | valid | invalid
+c3 = password : blank | provided
+c4 = next_param : absent | relative | external
+c5 = session : logged_out | logged_in
+c6 = comment_body : empty | valid
+c7 = thread_title : blank | provided
+c8 = thread_category : none | chosen
+c9 = csrf_token : missing | valid
+c10 = search_query : empty | valid
+c11 = form_submit : no | yes
+c12 = rtheory_link : absent | present
+
+[CONSTRAINTS]
+# (page is always selected; no constraint needed — every combination is a real page state)
+
+[SUCCESS]
+e1 = register form renders with next carried in a hidden field
+e1 <= c0=register AND c11=no
+e2 = registration creates the account and 302-redirects to /app/
+e2 <= c0=register AND c1=new AND c2=valid AND c3=provided AND c9=valid AND c11=yes AND c4=absent
+e3 = registration honors a relative next and returns the reader there
+e3 <= c0=register AND c1=new AND c2=valid AND c3=provided AND c9=valid AND c11=yes AND c4=relative
+e4 = login form renders with next preserved on cross-links
+e4 <= c0=login AND c11=no
+e5 = login 302-redirects to /app/
+e5 <= c0=login AND c1=existing AND c3=provided AND c9=valid AND c11=yes AND c4=absent
+e6 = login honors a relative next and returns the reader to the theory page
+e6 <= c0=login AND c1=existing AND c3=provided AND c9=valid AND c11=yes AND c4=relative
+e7 = new-thread form renders for a logged-in user
+e7 <= c0=new_thread AND c5=logged_in AND c11=no
+e8 = thread is created and the author lands on it
+e8 <= c0=new_thread AND c5=logged_in AND c7=provided AND c8=chosen AND c9=valid AND c11=yes
+e9 = comment posts to the thread and appears in the list
+e9 <= c0=thread AND c5=logged_in AND c6=valid AND c9=valid AND c11=yes
+e10 = search returns matching threads for a valid query
+e10 <= c0=search AND c10=valid
+e11 = comments API recognizes the logged-in forum user
+e11 <= c0=api_comments AND c5=logged_in
+e12 = every forum page headers a working R Theory return link
+e12 <= c12=present
+
+[FAIL]
+f1 = registration rejects an existing username, form re-renders with the error
+f1 <= c0=register AND c1=existing AND c11=yes
+f2 = registration rejects an invalid email, form re-renders with the error
+f2 <= c0=register AND c2=invalid AND c11=yes
+f3 = registration rejects a blank password, form re-renders with the error
+f3 <= c0=register AND c3=blank AND c11=yes
+f4 = external next is ignored (no open redirect); falls back to /app/
+f4 <= c0=register AND c4=external AND c11=yes
+f5 = login rejects unknown username, form re-renders with the error
+f5 <= c0=login AND c1=new AND c11=yes
+f6 = login rejects a blank password, form re-renders with the error
+f6 <= c0=login AND c3=blank AND c11=yes
+f7 = anonymous new-thread POST is refused and sent to login with next
+f7 <= c0=new_thread AND c5=logged_out AND c11=yes
+f8 = anonymous comment POST is refused
+f8 <= c0=thread AND c5=logged_out AND c11=yes
+f9 = empty comment POST is rejected, thread re-renders with the error
+f9 <= c0=thread AND c5=logged_in AND c6=empty AND c11=yes
+f10 = POST with missing CSRF token is rejected
+f10 <= c9=missing AND c11=yes
+f11 = comments API treats a logged-out reader as anonymous
+f11 <= c0=api_comments AND c5=logged_out
+
+[REQUIREMENTS]
+REQ-FO-001 : register form action posts under the /app prefix -> e1
+REQ-FO-002 : successful registration 302-redirects into the forum logged in -> e2
+REQ-FO-003 : registration honors a relative ?next= and returns the reader to the theory page -> e3
+REQ-FO-004 : login form action posts under the /app prefix -> e4
+REQ-FO-005 : successful login 302-redirects into the forum -> e5
+REQ-FO-006 : login honors a relative ?next= and returns the reader to the exact theory page -> e6
+REQ-FO-007 : already-logged-in visits to /login and /register respect next -> e3, e6
+REQ-FO-008 : duplicate username, invalid email, and blank password are rejected with the form re-rendered -> f1, f2, f3
+REQ-FO-009 : external next URLs are never honored (no open redirect) -> f4
+REQ-FO-010 : unknown username and blank password fail login with the form re-rendered -> f5, f6
+REQ-FO-011 : new threads require login, a title, and a category -> e7, e8, f7
+REQ-FO-012 : comments require login and a non-empty body -> e9, f8, f9
+REQ-FO-013 : POSTs without a valid CSRF token are rejected -> f10
+REQ-FO-014 : search returns matching threads for a valid query -> e10
+REQ-FO-015 : the comments API recognizes logged-in users and treats logged-out readers as anonymous -> e11, f11
+REQ-FO-016 : every forum page carries a working R Theory return link -> e12

@@ -1,0 +1,63 @@
+# CEG: lampy-installer — Lampy full installer
+# Repo: cosbykit-afk/lampy-installer
+# Standing: the installer must keep working for everybody else and for
+# future releases — never hardcoded to Kit's machine or the current release.
+
+[PAGE]
+Installer flows: install (fresh/upgrade), repair, uninstall,
+verify-bundle, set-passwords. Grounded in install.ps1, uninstall.ps1,
+lampy.nsi / lampy-slim.nsi, verify-bundle.py, set-passwords.py.
+
+[INPUTS]
+c1 = flow : install | repair | uninstall | verify | passwords
+c2 = bundle_present : no | yes
+c3 = existing_install : no | yes
+c4 = admin_rights : no | yes
+c5 = bundle_hash : match | mismatch
+c6 = target_dir : missing | empty | occupied
+c7 = user_data : absent | present
+c8 = passwords_set : no | yes
+c9 = confirm : no | yes
+
+[CONSTRAINTS]
+R(c1, c4)
+
+[SUCCESS]
+e1 = fresh install completes and services register
+e1 <= c1=install AND c2=yes AND c3=no AND c4=yes AND c5=match AND c6=empty
+e2 = upgrade install completes and existing user data is preserved
+e2 <= c1=install AND c2=yes AND c3=yes AND c4=yes AND c5=match AND c7=present
+e3 = repair skips the download when the bundle is already present (v1.1.10)
+e3 <= c1=repair AND c2=yes AND c3=yes AND c4=yes
+e4 = repair downloads the bundle when it is missing
+e4 <= c1=repair AND c2=no AND c3=yes AND c4=yes
+e5 = uninstall removes the program and preserves user data on confirmation
+e5 <= c1=uninstall AND c4=yes AND c7=present AND c9=yes
+e6 = verify-bundle passes when every hash matches the manifest
+e6 <= c1=verify AND c5=match
+e7 = set-passwords writes fresh credentials
+e7 <= c1=passwords AND c4=yes AND c8=no
+
+[FAIL]
+f1 = install refuses without admin rights
+f1 <= c1=install AND c4=no
+f2 = fresh install refuses an occupied directory that is not an install
+f2 <= c1=install AND c3=no AND c6=occupied
+f3 = verify-bundle fails on hash mismatch
+f3 <= c1=verify AND c5=mismatch
+f4 = uninstall aborts when user data is present and no confirmation given
+f4 <= c1=uninstall AND c7=present AND c9=no
+f5 = repair with no existing install refuses instead of installing fresh
+f5 <= c1=repair AND c3=no
+
+[REQUIREMENTS]
+REQ-LI-001 : fresh install on an empty target dir completes with services registered -> e1
+REQ-LI-002 : upgrade install preserves existing user data -> e2
+REQ-LI-003 : repair skips re-download when the bundle is already present -> e3
+REQ-LI-004 : repair downloads the bundle when it is missing -> e4
+REQ-LI-005 : uninstall preserves user data and requires explicit confirmation -> e5, f4
+REQ-LI-006 : verify-bundle passes on matching hashes, fails on mismatch -> e6, f3
+REQ-LI-007 : set-passwords writes fresh credentials -> e7
+REQ-LI-008 : install refuses without admin rights and refuses occupied non-install dirs -> f1, f2
+REQ-LI-009 : repair never masquerades as a fresh install -> f5
+REQ-LI-010 : no machine-specific paths and no release pins anywhere in the installer sources -> e1

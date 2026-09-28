@@ -1,0 +1,53 @@
+# CEG: profile — Muse Cosby Facebook profile daily management
+# Not a repo: the standing daily routine (fb-profile-notifications-daily).
+# Fail effects here are behaviors that must NEVER occur; tests assert absence.
+
+[PAGE]
+Daily profile routine: check notifications, accept real-looking friend
+requests (skip spam/scam), reply to comments where warranted (warm,
+first-person, in-voice; never commits Kit, never shares private info),
+clear/mark read; then Messenger (reply only where safe, one reply per
+thread per run; Jennifer surfaces as NEEDS YOU, never an autonomous reply).
+
+[INPUTS]
+c1 = friend_request : none | real | spam
+c2 = comment : none | warrants_reply | noise
+c3 = messenger : none | safe | unsafe | jennifer
+c4 = planned_post : no | yes
+c5 = ai_flag_on_post : set | unset
+
+[CONSTRAINTS]
+
+[SUCCESS]
+e1 = real-looking friend request accepted
+e1 <= c1=real
+e2 = spam or scam request skipped, never accepted
+e2 <= c1=spam
+e3 = warranted comment answered warmly in-voice, committing nothing and sharing nothing private
+e3 <= c2=warrants_reply
+e4 = notification queue cleared and marked read
+e4 <= c1=none AND c2=none AND c3=none
+e5 = safe Messenger thread gets exactly one reply
+e5 <= c3=safe
+e6 = Jennifer message surfaced as NEEDS YOU with no autonomous reply
+e6 <= c3=jennifer
+e7 = planned post published carrying the AI content flag
+e7 <= c4=yes AND c5=set
+
+[FAIL]
+f1 = spam or scam friend request accepted (must never occur)
+f1 <= c1=spam
+f2 = autonomous reply sent to Jennifer (must never occur)
+f2 <= c3=jennifer
+f3 = reply sent on an unsafe thread (must never occur)
+f3 <= c3=unsafe
+f4 = post published without the AI content flag (must never occur)
+f4 <= c4=yes AND c5=unset
+
+[REQUIREMENTS]
+REQ-PF-001 : real-looking friend requests are accepted; spam/scam are skipped -> e1, e2, f1
+REQ-PF-002 : comments that warrant it get a warm in-voice reply that commits Kit to nothing and shares no private info -> e3
+REQ-PF-003 : the notification queue is cleared and marked read each run -> e4
+REQ-PF-004 : Messenger replies go only to safe threads, one reply per thread per run -> e5, f3
+REQ-PF-005 : Jennifer's messages surface as NEEDS YOU; she never gets an autonomous reply -> e6, f2
+REQ-PF-006 : every feed post carries the AI content flag -> e7, f4

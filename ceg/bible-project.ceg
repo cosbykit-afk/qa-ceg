@@ -1,0 +1,74 @@
+# CEG: bible-project — Hebrew database + translation website
+# Repo: cosbykit-afk/bible-project
+# Grounded in website/app.py routes. Public-domain sources only.
+
+[PAGE]
+Bible website pages: index, book, chapter, verse, choice (POST),
+translations, reading, export, word detail.
+
+[INPUTS]
+c0 = page : index | book | chapter | verse | choice | translations | reading | export | word
+c1 = ref_valid : no | yes
+c2 = translation_id : none | kjv | ylt | custom
+c3 = choice_submit : no | yes
+c4 = export_format : none | supported | unsupported
+c5 = word_id : invalid | valid
+c6 = affixes_present : no | yes
+
+[CONSTRAINTS]
+# (page is always selected; no constraint needed — every combination is a real page state)
+
+[SUCCESS]
+e1 = index lists the books
+e1 <= c0=index
+e2 = book page lists its chapters
+e2 <= c0=book AND c1=yes
+e3 = chapter page lists its verses
+e3 <= c0=chapter AND c1=yes
+e4 = verse page shows the text in KJV
+e4 <= c0=verse AND c1=yes AND c2=kjv
+e5 = verse page shows the text in YLT
+e5 <= c0=verse AND c1=yes AND c2=ylt
+e6 = verse page shows the text in the custom translation
+e6 <= c0=verse AND c1=yes AND c2=custom
+e7 = choice POST sets the translation and redirects back
+e7 <= c0=choice AND c3=yes AND c2=kjv
+e8 = choice POST sets the translation and redirects back
+e8 <= c0=choice AND c3=yes AND c2=ylt
+e9 = choice POST sets the translation and redirects back
+e9 <= c0=choice AND c3=yes AND c2=custom
+e10 = translations page lists and manages translations
+e10 <= c0=translations
+e11 = reading view renders the passage in the chosen translation
+e11 <= c0=reading AND c1=yes AND c2=kjv
+e12 = reading view renders the passage in the chosen translation
+e12 <= c0=reading AND c1=yes AND c2=ylt
+e13 = export produces the file in the requested format
+e13 <= c0=export AND c4=supported
+e14 = word detail shows the Affixes row from the normalized disp columns
+e14 <= c0=word AND c5=valid AND c6=yes
+
+[FAIL]
+f1 = book page shows not-found for an invalid reference
+f1 <= c0=book AND c1=no
+f2 = chapter page shows not-found for an invalid reference
+f2 <= c0=chapter AND c1=no
+f3 = verse page shows not-found for an invalid reference
+f3 <= c0=verse AND c1=no
+f4 = reading view shows not-found for an invalid reference
+f4 <= c0=reading AND c1=no
+f5 = export rejects an unsupported format
+f5 <= c0=export AND c4=unsupported
+f6 = word detail 404s on an invalid word id
+f6 <= c0=word AND c5=invalid
+
+[REQUIREMENTS]
+REQ-BB-001 : index lists the books -> e1
+REQ-BB-002 : book and chapter pages list chapters and verses for valid references -> e2, e3
+REQ-BB-003 : verse page renders the text in KJV, YLT, and the custom translation -> e4, e5, e6
+REQ-BB-004 : the choice POST switches translation and redirects back -> e7, e8, e9
+REQ-BB-005 : translations page lists and manages translations -> e10
+REQ-BB-006 : reading view renders a passage in the chosen translation -> e11, e12
+REQ-BB-007 : export produces the requested supported format and rejects unsupported ones -> e13, f5
+REQ-BB-008 : invalid references show not-found on book, chapter, verse, and reading pages -> f1, f2, f3, f4
+REQ-BB-009 : word detail shows the Affixes row from the normalized disp columns; invalid ids 404 -> e14, f6

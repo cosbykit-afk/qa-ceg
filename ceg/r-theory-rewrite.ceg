@@ -1,0 +1,69 @@
+# CEG: r-theory-rewrite — R Theory public website (book pages)
+# Repo: cosbykit-afk/r-theory-rewrite | Live: Toetop :80 /var/www/r-theory
+
+[PAGE]
+Book page (sitebar nav, breadcrumb, dropdown, search, large-text toggle,
+comments panel, handoff cards). Grounded in qa-desktop.py 17-check suite.
+
+[INPUTS]
+c1 = nav_bar : absent | present
+c2 = dropdown_choice : none | book_page | vol2_anchor
+c3 = search_query : empty | valid
+c4 = search_submit : not_submitted | submitted
+c5 = large_text : off | on
+c6 = page_reload : no | yes
+c7 = large_text_persisted : no | yes
+c8 = comments_auth : logged_out | logged_in
+c9 = login_next_param : absent | present
+c10 = breadcrumb : absent | correct
+c11 = handoff_card : absent | present
+c12 = keyboard_focus : none | on_control
+
+[CONSTRAINTS]
+R(c4, c1)
+R(c9, c1)
+R(c2, c1)
+M(c6, c5)
+
+[SUCCESS]
+e1 = dropdown navigates to chosen book page
+e1 <= c1=present AND c2=book_page
+e2 = dropdown navigates to Volume II anchor on contents page
+e2 <= c1=present AND c2=vol2_anchor
+e3 = search opens new tab with site: query
+e3 <= c1=present AND c3=valid AND c4=submitted
+e4 = large-text mode on with toast, preference stored
+e4 <= c5=on
+e5 = large-text state survives reload
+e5 <= c6=yes AND c7=yes
+e6 = comments panel recognizes logged-in user
+e6 <= c8=logged_in
+e7 = forum login prompt carries next param back to this page
+e7 <= c1=present AND c8=logged_out AND c9=present
+e8 = breadcrumb shows Volume I / Book N / M of 7
+e8 <= c10=correct
+e9 = handoff card renders with copper tint
+e9 <= c11=present
+e10 = focused control shows 3px teal focus ring
+e10 <= c12=on_control
+
+[FAIL]
+f1 = empty search blocked with toast, stays on page
+f1 <= c1=present AND c3=empty AND c4=submitted
+f2 = large-text state lost across reload
+f2 <= c5=on AND c6=yes AND c7=no
+f3 = comments panel shows login prompt to logged-out reader
+f3 <= c8=logged_out
+
+[REQUIREMENTS]
+REQ-RW-001 : sitebar renders full-bleed in brand color, controls on one row, no horizontal overflow -> e1, e2
+REQ-RW-002 : book dropdown lists all books and the Volume II anchor; choosing navigates correctly -> e1, e2
+REQ-RW-003 : search box builds a site: query and opens it in a new tab -> e3
+REQ-RW-004 : empty search is blocked with an "Enter a search term" toast and focus stays in the box -> f1
+REQ-RW-005 : large-text toggle switches type scale, toasts, and persists the preference -> e4
+REQ-RW-006 : large-text preference survives a page reload -> e5, f2
+REQ-RW-007 : logged-in forum users are recognized in the comments panel; logged-out readers get a login prompt -> e6, f3
+REQ-RW-008 : the forum login prompt returns the reader to the exact theory page after login -> e7
+REQ-RW-009 : breadcrumb shows Home / Volume I / Book N / M of 7 on book pages -> e8
+REQ-RW-010 : handoff cards render the copper rule tint -> e9
+REQ-RW-011 : keyboard focus shows a 3px teal ring on every control -> e10
