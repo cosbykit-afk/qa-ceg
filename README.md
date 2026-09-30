@@ -54,3 +54,20 @@ filed as GitHub issues (label `qa`, deduplicated by title) and tracked in
 a local bug database (`bugs.db`, not published) that stays synced both
 ways with GitHub; a human-readable export lands in `PRIVATE_LEDGER.md`,
 which is also not published.
+
+## Status (2026-09-30)
+
+- **Initial public release** (2026-09-28): AND-only cause-effect graphing,
+  Cartesian input-state enumeration, constraint evaluation, and test-suite
+  generation (`ceg.py`).
+- **Bug tracking** — `bugs.py`: SQLite bug database with two-way GitHub
+  issue sync (deduplicated by title, label `qa`). The local `bugs.db` and
+  `PRIVATE_LEDGER.md` export are not published.
+- **Daily runner** — `qa_daily.py` runs detect → regen → test → issues →
+  sync across the repos; in daily use for cause-effect-graph QA.
+- **SAD architecture** — context diagram, level-1 DFD, and ERD in `docs/`.
+
+## Known issues
+
+- `ceg.py --all` must exit 0 — any requirement without a covering test
+  case fails the run by design. The graphs are the contract.
